@@ -192,6 +192,8 @@ pub enum Role {
     GlassSide,
     /// сплошной кузов (центральная стойка)
     Pillar,
+    /// хэтчбек: в этом сегменте сзади - стекло задней двери, а не металл
+    LiftbackGlass,
 }
 
 #[derive(Clone)]
@@ -243,6 +245,37 @@ fn spec(
     wing: [f32; 4],
     extras: Vec<([f32; 3], [f32; 3])>,
 ) -> CarSpec {
+    spec_roles(
+        name, l, w, h, wb, track, r, body, cabin, head, grille, intake, plates, tail, exh, mirror,
+        lip, wing, extras, None,
+    )
+}
+
+/// То же, но с возможностью задать роли сегментов салона (например
+/// `LiftbackGlass` для задней двери хэтчбека).
+#[allow(clippy::too_many_arguments)]
+fn spec_roles(
+    name: &'static str,
+    l: f32,
+    w: f32,
+    h: f32,
+    wb: f32,
+    track: f32,
+    r: f32,
+    body: &[[f32; 6]],
+    cabin: &[[f32; 3]],
+    head: [f32; 4],
+    grille: [f32; 3],
+    intake: [f32; 3],
+    plates: [f32; 2],
+    tail: [f32; 4],
+    exh: [f32; 2],
+    mirror: [f32; 2],
+    lip: [f32; 2],
+    wing: [f32; 4],
+    extras: Vec<([f32; 3], [f32; 3])>,
+    roles: Option<Vec<Role>>,
+) -> CarSpec {
     CarSpec {
         name,
         l,
@@ -253,13 +286,15 @@ fn spec(
         r,
         body: body.to_vec(),
         cabin: cabin.to_vec(),
-        roles: vec![
-            Role::GlassTop,
-            Role::GlassSide,
-            Role::Pillar,
-            Role::GlassSide,
-            Role::GlassTop,
-        ],
+        roles: roles.unwrap_or_else(|| {
+            vec![
+                Role::GlassTop,
+                Role::GlassSide,
+                Role::Pillar,
+                Role::GlassSide,
+                Role::GlassTop,
+            ]
+        }),
         head,
         grille,
         intake,
@@ -303,42 +338,52 @@ fn box_spec(name: &'static str, l: f32, w: f32, h: f32, wb: f32, track: f32, r: 
 /// focus, cobalt, gt3000, evo9, z350, rx7, supra, r34
 pub fn all_car_specs() -> Vec<CarSpec> {
     vec![
-        // Ford Focus II hatchback (2005-2011)
-        spec(
+        // Ford Focus II hatchback (2004-2011): высокий капот с "лобной" гранью,
+        // крутое лобовое, длинная крыша, покатая задняя дверь хэтчбека со стеклом.
+        // Колёса 205/50R17 (r=0.337), база 2.64, колея 1.566.
+        spec_roles(
             "Ford Focus II Hatchback",
             4.34,
             1.84,
-            1.50,
+            1.48,
             2.64,
-            1.58,
-            0.32,
+            1.56,
+            0.337,
             &[
-                [2.17, 0.32, 0.52, 0.60, 0.86, 0.80],
-                [2.08, 0.24, 0.58, 0.72, 0.91, 0.85],
-                [1.75, 0.22, 0.62, 0.86, 0.92, 0.86],
-                [1.00, 0.22, 0.66, 0.97, 0.92, 0.85],
-                [-1.35, 0.22, 0.68, 0.99, 0.92, 0.85],
-                [-2.00, 0.22, 0.68, 0.97, 0.92, 0.85],
-                [-2.17, 0.28, 0.60, 0.90, 0.88, 0.83],
+                [2.17, 0.34, 0.54, 0.62, 0.86, 0.80],
+                [2.08, 0.25, 0.60, 0.76, 0.91, 0.85],
+                [1.75, 0.23, 0.64, 0.90, 0.92, 0.86],
+                [1.00, 0.23, 0.68, 1.00, 0.92, 0.86],
+                [-1.35, 0.23, 0.70, 1.02, 0.92, 0.86],
+                [-1.95, 0.25, 0.70, 1.00, 0.91, 0.85],
+                [-2.17, 0.32, 0.62, 0.92, 0.87, 0.82],
             ],
             &[
                 [1.00, NA, 0.85],
-                [0.15, 1.48, 0.71],
-                [-0.28, 1.49, 0.71],
-                [-0.50, 1.49, 0.71],
-                [-1.62, 1.47, 0.70],
-                [-2.04, NA, 0.80],
+                [0.15, 1.46, 0.72],
+                [-0.28, 1.47, 0.72],
+                [-0.50, 1.47, 0.72],
+                [-1.62, 1.45, 0.71],
+                [-1.98, 1.32, 0.66],
+                [-2.10, NA, 0.80],
             ],
-            [0.60, 0.68, 0.52, 0.13],
-            [0.56, 0.80, 0.13],
-            [0.36, 1.15, 0.13],
-            [0.40, 0.66],
-            [0.70, 0.86, 0.46, 0.20],
+            [0.60, 0.72, 0.52, 0.15],
+            [0.58, 0.70, 0.14],
+            [0.36, 1.16, 0.13],
+            [0.40, 0.62],
+            [0.68, 0.86, 0.44, 0.22],
             [0.55, 0.34],
-            [0.85, 1.06],
-            [1.47, -1.66],
+            [0.85, 1.04],
+            [1.45, -1.66],
             [1.00, -2.12, 1.45, 0.42],
             vec![],
+            Some(vec![
+                Role::GlassTop,    // лобовое стекло
+                Role::GlassSide,   // передние двери
+                Role::Pillar,      // центральная стойка
+                Role::GlassSide,   // задние двери + треугольное стекло
+                Role::LiftbackGlass, // стекло задней двери хэтчбека
+            ]),
         ),
         // Chevrolet Cobalt SS Coupe (2008)
         spec(
@@ -1156,9 +1201,291 @@ fn spoiler(b: &mut Builder, s: &CarSpec, rgb: Rgb, kind: u8) {
     }
 }
 
+// ----------------------------- конвертер панелиной модели -----------------------------
+//
+// Ford Focus II собирается в отдельном модуле `focus_model` из настоящих
+// кузовных панелей (позиции f64 + материал). Здесь этот треугольничник
+// превращается в полигоны движка:
+//   1) склейка - соседние треугольники одной панели с общей нормалью и общим
+//      материалом сливаются в выпуклые полигоны (меньше вершин, чище грани);
+//   2) сглаженные нормали - усреднение плоских нормалей по позициям вершин с
+//      весами по материалу: металл тянет металл, пластик/тёмные торцы зазоров
+//      остаются резкими, поэтому линии зазоров не «размазываются».
+
+/// «Гладкие» материалы: их нормали усредняются (металл, стекло, хром).
+/// Тёмный пластик, резина и лампы остаются с резкими гранями.
+fn fm_smoothable(m: Mat) -> bool {
+    matches!(m, Mat::Paint | Mat::Glass | Mat::Rim)
+}
+
+fn fm_mat(m: crate::focus_model::FMat) -> Mat {
+    use crate::focus_model::FMat as M;
+    match m {
+        M::Body => Mat::Paint,
+        M::Glass => Mat::Glass,
+        M::Trim => Mat::Plastic,
+        M::Chrome => Mat::Rim,
+        M::LampF | M::LampR => Mat::Glass,
+        M::Light => Mat::Emissive,
+        M::Plate => Mat::Plastic,
+        M::Tire => Mat::Tire,
+        M::Wheel => Mat::Rim,
+    }
+}
+
+type K3 = (i64, i64, i64);
+type K6 = (i64, i64, i64, i64, i64, i64);
+
+fn join_k(a: K3, b: K3) -> K6 {
+    (a.0, a.1, a.2, b.0, b.1, b.2)
+}
+
+fn fm_key(p: &[f64; 3]) -> K3 {
+    let q = |v: f64| (v * 5000.0).round() as i64; // шаг 0.2 мм
+    (q(p[0]), q(p[1]), q(p[2]))
+}
+
+/// Треугольники панельной модели -> полигоны движка.
+/// `mirror_x` - отзеркалить по X (для левого колеса), `weld` - склеивать ли
+/// компланарные треугольники (у колеса они все разные, там не нужно).
+pub fn fm_to_polys(
+    tris: &[crate::focus_model::Tri],
+    pal: &crate::focus_model::Pal,
+    mirror_x: bool,
+    weld: bool,
+) -> Vec<Poly> {
+        let n = tris.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let mx = if mirror_x { -1.0f64 } else { 1.0f64 };
+    // плоские нормали треугольников
+    let mut fnorm = vec![V3::default(); n];
+    for i in 0..n {
+        let a = &tris[i];
+        let p = |v: &[f64; 3]| v3((v[0] * mx) as f32, v[1] as f32, v[2] as f32);
+        let (pa, pb, pc) = if mirror_x {
+            (p(&a.2.0), p(&a.1.0), p(&a.0.0))
+        } else {
+            (p(&a.0.0), p(&a.1.0), p(&a.2.0))
+        };
+        fnorm[i] = (pb - pa).cross(pc - pa).norm();
+    }
+
+        // ---- подготовка вершин: позиции f64 -> f32, обход с учётом зеркала ----
+    let mut tp: Vec<[[f64; 3]; 3]> = Vec::with_capacity(n);
+    let mut tm: Vec<[crate::focus_model::FMat; 3]> = Vec::with_capacity(n);
+    for t in tris.iter() {
+        let v = [&t.0, &t.1, &t.2];
+        let (i0, i1, i2) = if mirror_x { (2, 1, 0) } else { (0, 1, 2) };
+        let idx = [i0, i1, i2];
+        tp.push([v[idx[0]].0, v[idx[1]].0, v[idx[2]].0]);
+        tm.push([v[idx[0]].1, v[idx[1]].1, v[idx[2]].1]);
+    }
+    // квантованные ключи вершин и таблица позиций ф32 по ключу
+    let mut key = vec![(0i64, 0i64, 0i64); n * 3];
+    let mut pos32: std::collections::HashMap<(i64, i64, i64), V3> =
+        std::collections::HashMap::with_capacity(n * 3);
+    for i in 0..n {
+        for k in 0..3 {
+            let p = fm_key(&tp[i][k]);
+            key[i * 3 + k] = p;
+            pos32
+                .entry(p)
+                .or_insert(v3(p.0 as f32 / 5000.0, p.1 as f32 / 5000.0, p.2 as f32 / 5000.0));
+        }
+    }
+
+    // ---- плоские нормали ----
+    let mut fnorm = vec![V3::default(); n];
+    for i in 0..n {
+        let a = pos32[&key[i * 3]];
+        let b = pos32[&key[i * 3 + 1]];
+        let c = pos32[&key[i * 3 + 2]];
+        let d = (b - a).cross(c - a);
+        let l = d.len();
+        fnorm[i] = if l > 1e-9 { d * (1.0 / l) } else { v3(0.0, 1.0, 0.0) };
+    }
+
+    // ---- склейка компланарных треугольников одной панели в полигоны ----
+    // ключ ребра (упорядоченный) -> индексы треугольников с таким ребром
+    let mut edge_map: std::collections::HashMap<K6, Vec<usize>> = std::collections::HashMap::new();
+    for i in 0..n {
+        for e in 0..3 {
+            let a = key[i * 3 + e];
+            let b = key[i * 3 + (e + 1) % 3];
+            if a == b {
+                continue;
+            }
+            let kk = if a < b { (a, b) } else { (b, a) };
+            edge_map
+                .entry(join_k(kk.0, kk.1))
+                .or_default()
+                .push(i);
+        }
+    }
+    let mut used = vec![false; n];
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    // (треугольник, его рёбра в формате ключа) - для подсчёта граничных рёбер
+    let mut tedges: Vec<[K6; 3]> = Vec::with_capacity(n);
+    for i in 0..n {
+        let mut row = [(0i64, 0, 0, 0, 0, 0); 3];
+        for e in 0..3 {
+            let a = key[i * 3 + e];
+            let b = key[i * 3 + (e + 1) % 3];
+            row[e] = if a < b { join_k(a, b) } else { join_k(b, a) };
+        }
+        tedges.push(row);
+    }
+    for i in 0..n {
+        if used[i] {
+            continue;
+        }
+        used[i] = true;
+        let mut g = vec![i];
+        if !weld {
+            groups.push(g);
+            continue;
+        }
+        let mut queue = vec![i];
+        while let Some(t) = queue.pop() {
+            for e in 0..3 {
+                let cands: Vec<usize> = match edge_map.get(&tedges[t][e]) {
+                    Some(v) => v.clone(),
+                    None => continue,
+                };
+                for o in cands {
+                    if used[o] || o == t {
+                        continue;
+                    }
+                    if fnorm[o].dot(fnorm[t]) < 0.999_999 {
+                        continue; // не одна грань
+                    }
+                    // все три вершины общего материала и совпадают с материалом t
+                    if !(0..3).all(|k| tm[o][k] == tm[t][k]) {
+                        continue;
+                    }
+                    used[o] = true;
+                    g.push(o);
+                    queue.push(o);
+                }
+            }
+        }
+        groups.push(g);
+    }
+
+    // ---- контур группы -> выпуклый полигон ----
+    let mut polys: Vec<Poly> = Vec::with_capacity(groups.len());
+    for g in groups.iter() {
+        let mut cnt: std::collections::HashMap<K6, u32> = std::collections::HashMap::new();
+        for &t in g.iter() {
+            for e in 0..3 {
+                *cnt.entry(tedges[t][e]).or_insert(0) += 1;
+            }
+        }
+        // граничные рёбра группы (встречаются ровно один раз)
+        let edges: Vec<((i64, i64, i64), (i64, i64, i64))> = cnt
+            .iter()
+            .filter(|(_, v)| **v == 1)
+            .map(|(k, _)| ((k.0, k.1, k.2), (k.3, k.4, k.5)))
+            .collect();
+        if edges.is_empty() {
+            continue;
+        }
+        let mut ring: Vec<(i64, i64, i64)> = Vec::with_capacity(edges.len());
+        let start = edges[0];
+        let mut cur = start;
+        for _ in 0..edges.len() + 1 {
+            ring.push(cur.0);
+            match edges.iter().find(|e| e.0 == cur.1) {
+                Some(nx) => cur = *nx,
+                None => break,
+            }
+            if cur.0 == start.0 {
+                break;
+            }
+        }
+        ring.dedup();
+        if ring.len() < 3 {
+            continue;
+        }
+        let t0 = g[0];
+        let m = tm[t0][0];
+        let col = m.color(pal);
+        let mm = fm_mat(m);
+        let nn = fnorm[t0];
+        let mut v: Vec<PV> = ring.iter().map(|k| PV { p: pos32[k], n: nn, c: col, m: mm }).collect();
+        // порядок обхода должен совпадать с нормалью, иначе веер «вывернется»
+        if v.len() >= 3 {
+            let d = (v[1].p - v[0].p).cross(v[2].p - v[0].p);
+            if d.dot(nn) < 0.0 {
+                v.reverse();
+            }
+        }
+        polys.push(Poly { v });
+    }
+
+    // ---- сглаженные нормали: усреднение плоских нормалей по позициям ----
+    // вес по материалу: окрашенный металл, стекло и хром усредняются между
+    // собой; тёмный пластик (торцы зазоров, молдинги, арки) остаётся резким,
+    // поэтому линии зазоров читаются как линии, а не как плавный переход.
+    if weld {
+        let mut acc: std::collections::HashMap<(i64, i64, i64), (f32, f32, f32)> =
+            std::collections::HashMap::new();
+        for p in polys.iter() {
+            for x in p.v.iter() {
+                if !fm_smoothable(x.m) {
+                    continue;
+                }
+                let k = fm_keyf(x.p);
+                let e = acc.entry(k).or_insert((0.0, 0.0, 0.0));
+                e.0 += x.n.x;
+                e.1 += x.n.y;
+                e.2 += x.n.z;
+            }
+        }
+        for p in polys.iter_mut() {
+            for x in p.v.iter_mut() {
+                if !fm_smoothable(x.m) {
+                    continue;
+                }
+                if let Some(e) = acc.get(&fm_keyf(x.p)) {
+                    let s = v3(e.0, e.1, e.2);
+                    if s.len() > 1e-4 {
+                        x.n = s.norm();
+                    }
+                }
+            }
+        }
+    }
+    polys
+}
+
+fn fm_keyf(p: V3) -> K3 {
+    let q = |v: f32| (v as f64 * 5000.0).round() as i64;
+    (q(p.x), q(p.y), q(p.z))
+}
+
 /// Полигоны кузова реальной модели (без колёс).
 /// `spoiler_kind`: 0 нет, 1 лёгкий, 2 GT-крыло.
 pub fn build_body(s: &CarSpec, rgb: Rgb, glow: Option<Rgb>, spoiler_kind: u8) -> Vec<Poly> {
+    // Ford Focus II: панельная модель из отдельного модуля focus_model
+    if s.name == "Ford Focus II Hatchback" {
+        let pal = crate::focus_model::Pal {
+            paint: rgb,
+            glass: GLASS,
+            trim: DARK,
+            chrome: [0.75, 0.78, 0.82],
+            lamp_f: [0.90, 0.92, 0.85],
+            lamp_r: [0.45, 0.05, 0.06],
+            light: glow.unwrap_or([1.0, 0.96, 0.80]),
+            plate: [0.93, 0.93, 0.95],
+            tire: TIRE,
+            rim: [0.62, 0.63, 0.66],
+        };
+        let tris = crate::focus_model::build();
+        return fm_to_polys(&tris, &pal, false, true);
+    }
     let mut b = Builder::new();
     let st = densify(&body_stations(s), 0.28);
     let rings: Vec<Vec<V3>> = st.iter().map(|r| body_ring(r)).collect();
@@ -1226,7 +1553,7 @@ pub fn build_body(s: &CarSpec, rgb: Rgb, glow: Option<Rgb>, spoiler_kind: u8) ->
     let cab_f = |i: usize, e: usize| -> (Rgb, Mat) {
         let role = roles[(i / 3).min(roles.len() - 1)];
         let glass = (role == Role::GlassSide && (e == 0 || e == 5))
-            || (role == Role::GlassTop && (e == 2 || e == 3));
+            || ((role == Role::GlassTop || role == Role::LiftbackGlass) && (e == 2 || e == 3));
         if glass {
             (GLASS, Mat::Glass)
         } else {
@@ -1272,184 +1599,194 @@ fn pv(p: V3, n: V3, c: Rgb, m: Mat) -> PV {
 }
 
 /// Колесо в локальных координатах (начало - центр колеса, x - поперёк машины).
-/// `style`: 0 диск, 1 спицы, 2 турбина.
+/// `style`: 0 закрытый штамповой диск, 1 пять широких спиц, 2 турбина.
+///
+/// Раньше резина была просто прямым цилиндром с плоскими торцами-многоугольниками,
+/// а вокруг диска лежало несколько концентрических полигональных колец разных
+/// цветов и остроконечные "гайки" - на ходу грани вспыхивали по очереди и
+/// колесо казалось квадратным. Теперь это нормальное тело вращения:
+/// скруглённое сечение шины (протектор + плечи + боковины), пояса диска
+/// с гладкими нормалями, одна тёмная тарелка под спицами (нет строб-эффекта
+/// между спицами) и цилиндрическая ступица с крышкой.
 pub fn wheel_polys(s: &CarSpec, sx: f32, rim: Rgb, style: u8) -> Vec<Poly> {
-    let r = s.r;
-    let half_width = 0.115_f32;
-    let segments = 48usize;
+    // Ford Focus II: колесо тоже из отдельного модуля focus_model.
+    // Модель колеса уже симметрична (обе стороны тарелки построены), поэтому
+    // левое/правое различаются только знаком x - зеркалим именно его.
+    if s.name == "Ford Focus II Hatchback" {
+        let pal = crate::focus_model::Pal {
+            paint: [0.5, 0.5, 0.55],
+            glass: GLASS,
+            trim: DARK,
+            chrome: [0.75, 0.78, 0.82],
+            lamp_f: [0.9, 0.92, 0.85],
+            lamp_r: [0.45, 0.05, 0.06],
+            light: [1.0, 0.96, 0.8],
+            plate: [0.93, 0.93, 0.95],
+            tire: TIRE,
+            rim,
+        };
+        let tris = crate::focus_model::wheel(style);
+        return fm_to_polys(&tris, &pal, sx < 0.0, false);
+    }
+    let r = s.r; // внешний радиус резины (205/50R17 ~ 0.337 м)
+    let hw = 0.10f32; // полуширина протектора
+    let seg = 64usize; // сегментов по окружности
+    let dphi = 2.0 * PI / seg as f32;
     let mut polys = Vec::new();
 
-    // Rounded tire carcass with a subtle tread surface.
-    for k in 0..segments {
-        let a0 = 2.0 * PI * k as f32 / segments as f32;
-        let a1 = 2.0 * PI * (k + 1) as f32 / segments as f32;
-        let n0 = v3(0.0, a0.cos(), a0.sin());
-        let n1 = v3(0.0, a1.cos(), a1.sin());
-        let point = |a: f32, x: f32, radius: f32| v3(x, a.cos() * radius, a.sin() * radius);
-        polys.push(Poly {
-            v: vec![
-                pv(point(a0, -half_width, r), n0, TIRE, Mat::Tire),
-                pv(point(a0, half_width, r), n0, TIRE, Mat::Tire),
-                pv(point(a1, half_width, r), n1, TIRE, Mat::Tire),
-                pv(point(a1, -half_width, r), n1, TIRE, Mat::Tire),
-            ],
-        });
-        // Fine tread grooves around the shoulder, represented as narrow dark strips.
-        if k % 2 == 0 {
-            let mid = (a0 + a1) * 0.5;
-            let p0 = point(mid, -half_width * 0.98, r * 0.985);
-            let p1 = point(mid, half_width * 0.98, r * 0.985);
-            let p2 = point(mid + 0.012, half_width * 0.98, r * 0.985);
-            let p3 = point(mid + 0.012, -half_width * 0.98, r * 0.985);
+    // ----------------------------- шина -----------------------------
+    // Шина - тело вращения с ПОСТОЯННОЙ полушириной hw по всей окружности.
+    // Движок крутит колесо вокруг оси X, не трогая координату x; если бы
+    // ширина менялась вместе с радиусом ("скруглённые плечи"), точка на
+    // макушке уезжала бы наружу на sqrt(r^2+x^2) и на ходу колесо дышало
+    // гранями - отсюда и ощущение "квадратного колеса".
+    let mut band = |a: usize, b: usize| {
+        let pa = a as f32 * dphi;
+        let pb = b as f32 * dphi;
+        let (ca, sa) = (pa.cos(), pa.sin());
+        let (cb, sb) = (pb.cos(), pb.sin());
+        let n = v3(0.0, (ca + cb) * 0.5, (sa + sb) * 0.5);
+        for &sd in [-1.0f32, 1.0].iter() {
             polys.push(Poly {
                 v: vec![
-                    pv(p0, n0, [0.025, 0.025, 0.03], Mat::Tire),
-                    pv(p1, n0, [0.025, 0.025, 0.03], Mat::Tire),
-                    pv(p2, n1, [0.025, 0.025, 0.03], Mat::Tire),
-                    pv(p3, n1, [0.025, 0.025, 0.03], Mat::Tire),
+                    pv(v3(sd * hw, ca * r, sa * r), n, TIRE, Mat::Tire),
+                    pv(v3(sd * hw, cb * r, sb * r), n, TIRE, Mat::Tire),
+                    pv(v3(-sd * hw, cb * r, sb * r), n, TIRE, Mat::Tire),
+                    pv(v3(-sd * hw, ca * r, sa * r), n, TIRE, Mat::Tire),
+                ],
+            });
+        }
+    };
+    for k in 0..seg {
+        band(k, k + 1);
+    }
+
+    // Поперечные канавки протектора: короткие дуги только в зоне пятна контакта
+    // не нужны, рисуем их сверху, где они видны из кабины.
+    for k in 0..seg {
+        if k % 3 != 0 {
+            continue;
+        }
+        let phi = k as f32 * dphi;
+        if phi.cos() <= 0.65 {
+            continue;
+        }
+        let (cp, sp) = (phi.cos(), phi.sin());
+        let n = v3(0.0, cp, sp);
+        let pt = |x: f32, off: f32| v3(x, cp * (r + 0.001) - sp * off, sp * (r + 0.001) + cp * off);
+        polys.push(Poly {
+            v: vec![
+                pv(pt(-hw + 0.012, -0.018), n, [0.02, 0.02, 0.024], Mat::Tire),
+                pv(pt(-hw + 0.012, 0.018), n, [0.02, 0.02, 0.024], Mat::Tire),
+                pv(pt(hw - 0.012, 0.018), n, [0.02, 0.02, 0.024], Mat::Tire),
+                pv(pt(hw - 0.012, -0.018), n, [0.02, 0.02, 0.024], Mat::Tire),
+            ],
+        });
+    }
+
+    // ----------------------------- диск -----------------------------
+    let rim_r = r * 0.735; // 17" при резине 205/50R17
+    let out = hw - 0.006; // внешняя плоскость обода
+    let back = hw - 0.055; // плоскость тарелки спиц (утоплена)
+    let dark: Rgb = [0.035, 0.037, 0.042];
+
+    // Гладкий пояс на X=const между двумя радиусами.
+    let ring_band = |res: &mut Vec<Poly>, x: f32, r0: f32, r1: f32, c: Rgb, m: Mat, steps: usize| {
+        for k in 0..steps {
+            let a0 = k as f32 * 2.0 * PI / steps as f32;
+            let a1 = (k + 1) as f32 * 2.0 * PI / steps as f32;
+            let n = v3(0.0, (a0.cos() + a1.cos()) * 0.5, (a0.sin() + a1.sin()) * 0.5);
+            res.push(Poly {
+                v: vec![
+                    pv(v3(x, a0.cos() * r0, a0.sin() * r0), n, c, m),
+                    pv(v3(x, a0.cos() * r1, a0.sin() * r1), n, c, m),
+                    pv(v3(x, a1.cos() * r1, a1.sin() * r1), n, c, m),
+                    pv(v3(x, a1.cos() * r0, a1.sin() * r0), n, c, m),
+                ],
+            });
+        }
+    };
+    // Заполненный круг веером; норма вдоль оси - плоская грань без мерцания.
+    let disc = |res: &mut Vec<Poly>, x: f32, radius: f32, c: Rgb, m: Mat, steps: usize| {
+        res.push(Poly {
+            v: (0..steps)
+                .map(|k| {
+                    let a = k as f32 * 2.0 * PI / steps as f32;
+                    pv(v3(sx * x, a.cos() * radius, a.sin() * radius), v3(sx, 0.0, 0.0), c, m)
+                })
+                .collect(),
+        });
+    };
+
+    // Полочка обода от боковины резины наружу + лицевая кромка.
+    ring_band(&mut polys, out - 0.010, r * 0.726, rim_r, [0.06, 0.062, 0.07], Mat::Plastic, 32);
+    ring_band(&mut polys, out, rim_r, rim_r + 0.007, rim, Mat::Rim, 48);
+    ring_band(&mut polys, out, rim_r - 0.013, rim_r + 0.007, [rim[0] * 0.85, rim[1] * 0.85, rim[2] * 0.85], Mat::Rim, 48);
+
+    // Тёмное дно за спицами одним ровным кругом: при вращении между спицами
+    // мелькает однотонная темнота, а не пёстрый ротор - это и убирало "квадрат".
+    disc(&mut polys, back + 0.004, rim_r - 0.013, dark, Mat::Plastic, seg);
+
+    if style == 0 {
+        // Штамповой стальной диск: почти закрытая тарелка с пятью окнами.
+        disc(&mut polys, back, rim_r - 0.013, [rim[0] * 0.75, rim[1] * 0.75, rim[2] * 0.75], Mat::Rim, seg);
+        for i in 0..5 {
+            let a = i as f32 * 2.0 * PI / 5.0 + 0.3;
+            let cy = a.cos() * rim_r * 0.58;
+            let cz = a.sin() * rim_r * 0.58;
+            let hr = rim_r * 0.15;
+            let hole: Vec<PV> = (0..12)
+                .map(|j| {
+                    let b = j as f32 * 2.0 * PI / 12.0;
+                    pv(v3(sx * back, cy + b.cos() * hr, cz + b.sin() * hr), v3(sx, 0.0, 0.0), dark, Mat::Plastic)
+                })
+                .collect();
+            polys.push(Poly { v: hole });
+        }
+    } else {
+        // Ободок тарелки и спицы. Спицы - трапеции строго в плоскости back,
+        // все одной яркости; контур круга держится ободом, поэтому форма
+        // спиц silhouette не ломает.
+        ring_band(&mut polys, back, rim_r * 0.28, rim_r - 0.013, rim, Mat::Rim, 48);
+        let count = if style == 1 { 5 } else { 12 };
+        let tw = if style == 1 { 0.052f32 } else { 0.026f32 };
+        for i in 0..count {
+            let a = i as f32 * 2.0 * PI / count as f32;
+            let (ca, sa) = (a.cos(), a.sin());
+            let ri = rim_r * 0.18;
+            let ro = rim_r - 0.014;
+            let px = |rr: f32, tt: f32| v3(sx * back, ca * rr - sa * tt, sa * rr + ca * tt);
+            polys.push(Poly {
+                v: vec![
+                    pv(px(ri, tw), v3(sx, 0.0, 0.0), rim, Mat::Rim),
+                    pv(px(ro, tw * 0.5), v3(sx, 0.0, 0.0), rim, Mat::Rim),
+                    pv(px(ro, -tw * 0.5), v3(sx, 0.0, 0.0), rim, Mat::Rim),
+                    pv(px(ri, -tw), v3(sx, 0.0, 0.0), rim, Mat::Rim),
                 ],
             });
         }
     }
 
-    // Sidewall faces and a subtle raised sidewall ring.
-    for &side in &[-1.0_f32, 1.0] {
-        let face: Vec<PV> = (0..segments)
-            .map(|k| {
-                let a = 2.0 * PI * k as f32 / segments as f32;
-                pv(
-                    v3(side * half_width, a.cos() * r, a.sin() * r),
-                    v3(side, 0.0, 0.0),
-                    [0.045, 0.045, 0.052],
-                    Mat::Tire,
-                )
-            })
-            .collect();
-        polys.push(Poly { v: face });
-        let side_ring: Vec<PV> = (0..segments)
-            .map(|k| {
-                let a = 2.0 * PI * k as f32 / segments as f32;
-                pv(
-                    v3(
-                        side * (half_width + 0.001),
-                        a.cos() * r * 0.84,
-                        a.sin() * r * 0.84,
-                    ),
-                    v3(side, 0.0, 0.0),
-                    [0.075, 0.075, 0.08],
-                    Mat::Tire,
-                )
-            })
-            .collect();
-        polys.push(Poly { v: side_ring });
-    }
-
-    // Brake rotor behind the alloy wheel, followed by the rim barrel and spokes.
-    let face_x = sx * (half_width + 0.006);
-    let circle = |offset: f32, radius: f32, colour: Rgb, material: Mat| -> Poly {
-        Poly {
-            v: (0..segments)
-                .map(|k| {
-                    let a = 2.0 * PI * k as f32 / segments as f32;
-                    pv(
-                        v3(
-                            sx * (half_width + offset),
-                            a.cos() * radius,
-                            a.sin() * radius,
-                        ),
-                        v3(sx, 0.0, 0.0),
-                        colour,
-                        material,
-                    )
-                })
-                .collect(),
-        }
-    };
-    let outer_r = r * 0.79;
-    polys.push(circle(0.004, outer_r, [0.025, 0.027, 0.032], Mat::Plastic));
-    polys.push(circle(0.008, outer_r * 0.90, [0.30, 0.31, 0.33], Mat::Rim));
-    polys.push(circle(
-        0.010,
-        outer_r * 0.83,
-        [0.055, 0.058, 0.065],
-        Mat::Plastic,
-    ));
-
-    // A visible brake caliper near the upper rear quadrant of the rotor.
-    let caliper_x = sx * (half_width + 0.013);
-    let caliper = [
-        v3(caliper_x, -outer_r * 0.40, outer_r * 0.18),
-        v3(caliper_x, -outer_r * 0.12, outer_r * 0.18),
-        v3(caliper_x, -outer_r * 0.08, outer_r * 0.52),
-        v3(caliper_x, -outer_r * 0.38, outer_r * 0.52),
-    ];
-    polys.push(Poly {
-        v: caliper
-            .iter()
-            .map(|&p| pv(p, v3(sx, 0.0, 0.0), [0.68, 0.07, 0.035], Mat::Paint))
-            .collect(),
-    });
-
-    if style == 0 {
-        polys.push(circle(0.014, outer_r * 0.74, rim, Mat::Rim));
-        polys.push(circle(
-            0.018,
-            outer_r * 0.38,
-            [rim[0] * 0.68, rim[1] * 0.68, rim[2] * 0.68],
-            Mat::Rim,
-        ));
-    } else {
-        polys.push(circle(0.014, outer_r * 0.94, rim, Mat::Rim));
-        polys.push(circle(
-            0.018,
-            outer_r * 0.84,
-            [0.025, 0.027, 0.032],
-            Mat::Plastic,
-        ));
-        let spoke_count = if style == 1 { 5 } else { 10 };
-        let thickness = if style == 1 { 0.047_f32 } else { 0.024_f32 };
-        let x = sx * (half_width + 0.023);
-        for k in 0..spoke_count {
-            let a = 2.0 * PI * k as f32 / spoke_count as f32;
-            let (ca, sa) = (a.cos(), a.sin());
-            let inner = outer_r * 0.16;
-            let outer = outer_r * 0.82;
-            let (nx, ny) = (-sa * thickness, ca * thickness);
-            let pts = [
-                v3(x, ca * inner + nx, sa * inner + ny),
-                v3(x, ca * inner - nx, sa * inner - ny),
-                v3(x, ca * outer - nx * 0.45, sa * outer - ny * 0.45),
-                v3(x, ca * outer + nx * 0.45, sa * outer + ny * 0.45),
-            ];
-            polys.push(Poly {
-                v: pts
-                    .iter()
-                    .map(|&p| pv(p, v3(sx, 0.0, 0.0), rim, Mat::Rim))
-                    .collect(),
-            });
-        }
-    }
-
-    // Hub and five lug nuts, placed around the centre rather than stacked on it.
-    polys.push(circle(0.027, outer_r * 0.16, [0.12, 0.13, 0.15], Mat::Rim));
-    let nut_x = face_x + sx * 0.025;
-    for k in 0..5 {
-        let a = 2.0 * PI * k as f32 / 5.0;
-        let cy = a.cos() * outer_r * 0.24;
-        let cz = a.sin() * outer_r * 0.24;
-        let rr = outer_r * 0.035;
-        let pts = [
-            v3(nut_x, cy + rr, cz),
-            v3(nut_x, cy - rr * 0.5, cz + rr * 0.87),
-            v3(nut_x, cy - rr * 0.5, cz - rr * 0.87),
-        ];
+    // Ступица: короткий цилиндр + крышка (никаких остроконечных гаек-треугольников).
+    let hub_r = rim_r * 0.19;
+    let hub_seg = 24usize;
+    for k in 0..hub_seg {
+        let a0 = k as f32 * 2.0 * PI / hub_seg as f32;
+        let a1 = (k + 1) as f32 * 2.0 * PI / hub_seg as f32;
+        let n0 = v3(0.0, a0.cos(), a0.sin());
+        let n1 = v3(0.0, a1.cos(), a1.sin());
+        let cc = [rim[0] * 0.7, rim[1] * 0.7, rim[2] * 0.7];
         polys.push(Poly {
-            v: pts
-                .iter()
-                .map(|&p| pv(p, v3(sx, 0.0, 0.0), [0.72, 0.73, 0.75], Mat::Rim))
-                .collect(),
+            v: vec![
+                pv(v3(sx * back, a0.cos() * hub_r, a0.sin() * hub_r), n0, cc, Mat::Rim),
+                pv(v3(sx * (back - 0.016), a0.cos() * hub_r, a0.sin() * hub_r), n0, cc, Mat::Rim),
+                pv(v3(sx * (back - 0.016), a1.cos() * hub_r, a1.sin() * hub_r), n1, cc, Mat::Rim),
+                pv(v3(sx * back, a1.cos() * hub_r, a1.sin() * hub_r), n1, cc, Mat::Rim),
+            ],
         });
     }
+    disc(&mut polys, back - 0.016, hub_r, [0.10, 0.11, 0.13], Mat::Rim, hub_seg);
+
     polys
 }
 
