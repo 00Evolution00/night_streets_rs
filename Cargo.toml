@@ -1,0 +1,16 @@
+[package]
+name = "night_streets"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+macroquad = "0.4"
+
+# без оптимизаций игра в debug-режиме сильно тормозит, поэтому оптимизируем и dev
+[profile.dev]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
