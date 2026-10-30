@@ -1370,55 +1370,54 @@ pub fn fm_to_polys(
         groups.push(g);
     }
 
-    // ---- контур группы -> выпуклый полигон ----
-    let mut polys: Vec<Poly> = Vec::with_capacity(groups.len());
+    // ---- группа -> полигоны ----
+    // Раньше здесь шёл обход «кольца» граничных рёбер, но при склейке
+    // нескольких треугольников кольцо часто разрывалось/самосечилось, и
+    // панель теряла целые куски — снаружи это выглядело как «дырявая/
+    // прозрачная машина, видны только дверь и крышка багажника». Теперь
+    // каждый треугольник становится отдельным полигоном; визуальной
+    // стыковки нет (macroquad рисует каждый треугольник плоским цветом),
+    // зато геометрия не теряет ни одного куска.
+    let mut polys: Vec<Poly> = Vec::with_capacity(groups.iter().map(|g| g.len()).sum());
     for g in groups.iter() {
-        let mut cnt: FM<K6, u32> = FM::new();
         for &t in g.iter() {
-            for e in 0..3 {
-                *cnt.entry(tedges[t][e]).or_insert(0) += 1;
+            let k0 = key[t * 3];
+            let k1 = key[t * 3 + 1];
+            let k2 = key[t * 3 + 2];
+            if k0 == k1 || k1 == k2 || k0 == k2 {
+                continue; // вырожденный
             }
-        }
-        // граничные рёбра группы (встречаются ровно один раз)
-        let edges: Vec<((i64, i64, i64), (i64, i64, i64))> = cnt
-            .iter()
-            .filter(|(_, v)| **v == 1)
-            .map(|(k, _)| ((k.0, k.1, k.2), (k.3, k.4, k.5)))
-            .collect();
-        if edges.is_empty() {
-            continue;
-        }
-        let mut ring: Vec<(i64, i64, i64)> = Vec::with_capacity(edges.len());
-        let start = edges[0];
-        let mut cur = start;
-        for _ in 0..edges.len() + 1 {
-            ring.push(cur.0);
-            match edges.iter().find(|e| e.0 == cur.1) {
-                Some(nx) => cur = *nx,
-                None => break,
-            }
-            if cur.0 == start.0 {
-                break;
-            }
-        }
-        ring.dedup();
-        if ring.len() < 3 {
-            continue;
-        }
-        let t0 = g[0];
-        let m = tm[t0][0];
-        let col = m.color(pal);
-        let mm = fm_mat(m);
-        let nn = fnorm[t0];
-        let mut v: Vec<PV> = ring.iter().map(|k| PV { p: pos32[k], n: nn, c: col, m: mm }).collect();
-        // порядок обхода должен совпадать с нормалью, иначе веер «вывернется»
-        if v.len() >= 3 {
+            let a = pos32[&k0];
+            let b = pos32[&k1];
+            let c = pos32[&k2];
+            // наружная вершина панели (ближе всего к +max|x|) определяет
+            // материал и цвет — иначе грань красится тёмной изнанкой
+            let xa = a.x.abs();
+            let xb = b.x.abs();
+            let xc = c.x.abs();
+            let vi = if xa >= xb && xa >= xc {
+                0
+            } else if xb >= xc {
+                1
+            } else {
+                2
+            };
+            let m = tm[t][vi];
+            let col = m.color(pal);
+            let mm = fm_mat(m);
+            let nn = fnorm[t];
+            let mut v = vec![
+                PV { p: a, n: nn, c: col, m: mm },
+                PV { p: b, n: nn, c: col, m: mm },
+                PV { p: c, n: nn, c: col, m: mm },
+            ];
+            // обход против часовой если смотреть со стороны нормали
             let d = (v[1].p - v[0].p).cross(v[2].p - v[0].p);
             if d.dot(nn) < 0.0 {
                 v.reverse();
             }
+            polys.push(Poly { v });
         }
-        polys.push(Poly { v });
     }
 
     // ---- сглаженные нормали: усреднение плоских нормалей по позициям ----
@@ -1457,9 +1456,48 @@ pub fn fm_to_polys(
     polys
 }
 
+fn t0_first(g: &[usize]) -> usize {
+    g[0]
+}
+
 fn fm_keyf(p: V3) -> K3 {
     let q = |v: f32| (v as f64 * 5000.0).round() as i64;
     (q(p.x), q(p.y), q(p.z))
+}
+
+/// Гарантированная внешняя ориентация полигонов панелиной модели.
+/// Движок macroquad при сборке индексов переворачивает обход всех
+/// треугольников (из-за отражения камеры по X), поэтому у «правильных»
+/// на первый взгляд граней видимость в игре получается с точностью до
+/// наоборот. Чтобы не гадать, для каждого полигона считаем signed volume
+/// относительно центра модели: если нормаль грани смотрит внутрь —
+/// разворачиваем обход. После этого все наружные грани гарантированно
+/// видны снаружи, а внутренние (изнанка панелей) корректно отбраковываются,
+/// и машина перестаёт быть «прозрачной».
+pub fn orient_out(polys: &mut [Poly]) {
+    if polys.is_empty() {
+        return;
+    }
+    let mut mn = v3(f32::MAX, f32::MAX, f32::MAX);
+    let mut mx = v3(-f32::MAX, -f32::MAX, -f32::MAX);
+    for p in polys.iter() {
+        for x in p.v.iter() {
+            mn = v3(mn.x.min(x.p.x), mn.y.min(x.p.y), mn.z.min(x.p.z));
+            mx = v3(mx.x.max(x.p.x), mx.y.max(x.p.y), mx.z.max(x.p.z));
+        }
+    }
+    let c = (mn + mx) * 0.5;
+    for p in polys.iter_mut() {
+        if p.v.len() < 3 {
+            continue;
+        }
+        let a = p.v[0].p;
+        let d = (p.v[1].p - a).cross(p.v[2].p - a);
+        let m = (a + p.v[1].p + p.v[2].p) * (1.0 / 3.0) - c;
+        if d.dot(m) < 0.0 {
+            p.v.reverse();
+        }
+    }
 }
 
 /// Полигоны кузова реальной модели (без колёс).
@@ -1480,7 +1518,9 @@ pub fn build_body(s: &CarSpec, rgb: Rgb, glow: Option<Rgb>, spoiler_kind: u8) ->
             rim: [0.62, 0.63, 0.66],
         };
         let tris = crate::focus_model::build();
-        return fm_to_polys(&tris, &pal, false, true);
+        let mut out = fm_to_polys(&tris, &pal, false, true);
+        orient_out(&mut out);
+        return out;
     }
     let mut b = Builder::new();
     let st = densify(&body_stations(s), 0.28);
@@ -1622,7 +1662,9 @@ pub fn wheel_polys(s: &CarSpec, sx: f32, rim: Rgb, style: u8) -> Vec<Poly> {
             rim,
         };
         let tris = crate::focus_model::wheel(style);
-        return fm_to_polys(&tris, &pal, sx < 0.0, false);
+        let mut out = fm_to_polys(&tris, &pal, sx < 0.0, false);
+        orient_out(&mut out);
+        return out;
     }
     let r = s.r; // внешний радиус резины (205/50R17 ~ 0.337 м)
     let hw = 0.10f32; // полуширина протектора
