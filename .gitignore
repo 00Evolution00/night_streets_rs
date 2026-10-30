@@ -1,0 +1,4 @@
+/target
+night_save.txt
+build/
+*.svg

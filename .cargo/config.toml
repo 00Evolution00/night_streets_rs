@@ -1,0 +1,2 @@
+# Файл пуст по плану: конфиги уровня машины (CARGO_HOME, offline) здесь не нужны.
+# Патч fontdue живёт в [patch.crates-io] секции Cargo.toml -> vendor/fontdue-0.9.5
