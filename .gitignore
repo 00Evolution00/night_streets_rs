@@ -1,3 +1,4 @@
 /target
 night_save.txt
-Cargo.lock
+build/
+*.svg

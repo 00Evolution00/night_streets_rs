@@ -1221,6 +1221,9 @@ fn fm_smoothable(m: Mat) -> bool {
 fn fm_mat(m: crate::focus_model::FMat) -> Mat {
     use crate::focus_model::FMat as M;
     match m {
+        // Внутренний «кокон» (страховка от прозрачности) рисуем тёмным
+        // матовым пластиком, чтобы он не перетягивал на себя блики кузова.
+        M::Inner => Mat::Plastic,
         M::Body => Mat::Paint,
         M::Glass => Mat::Glass,
         M::Trim => Mat::Plastic,
@@ -1245,6 +1248,8 @@ fn fm_key(p: &[f64; 3]) -> K3 {
     (q(p[0]), q(p[1]), q(p[2]))
 }
 
+type FM<K, V> = std::collections::BTreeMap<K, V>;
+
 /// Треугольники панельной модели -> полигоны движка.
 /// `mirror_x` - отзеркалить по X (для левого колеса), `weld` - склеивать ли
 /// компланарные треугольники (у колеса они все разные, там не нужно).
@@ -1258,34 +1263,22 @@ pub fn fm_to_polys(
     if n == 0 {
         return Vec::new();
     }
-    let mx = if mirror_x { -1.0f64 } else { 1.0f64 };
-    // плоские нормали треугольников
-    let mut fnorm = vec![V3::default(); n];
-    for i in 0..n {
-        let a = &tris[i];
-        let p = |v: &[f64; 3]| v3((v[0] * mx) as f32, v[1] as f32, v[2] as f32);
-        let (pa, pb, pc) = if mirror_x {
-            (p(&a.2.0), p(&a.1.0), p(&a.0.0))
-        } else {
-            (p(&a.0.0), p(&a.1.0), p(&a.2.0))
-        };
-        fnorm[i] = (pb - pa).cross(pc - pa).norm();
-    }
-
-        // ---- подготовка вершин: позиции f64 -> f32, обход с учётом зеркала ----
+// ---- подготовка вершин: позиции f64 -> f32, обход с учётом зеркала ----
     let mut tp: Vec<[[f64; 3]; 3]> = Vec::with_capacity(n);
     let mut tm: Vec<[crate::focus_model::FMat; 3]> = Vec::with_capacity(n);
     for t in tris.iter() {
         let v = [&t.0, &t.1, &t.2];
         let (i0, i1, i2) = if mirror_x { (2, 1, 0) } else { (0, 1, 2) };
         let idx = [i0, i1, i2];
-        tp.push([v[idx[0]].0, v[idx[1]].0, v[idx[2]].0]);
+        let neg = |p: &[f64; 3]| -> [f64; 3] {
+            if mirror_x { [-p[0], p[1], p[2]] } else { *p }
+        };
+        tp.push([neg(&v[idx[0]].0), neg(&v[idx[1]].0), neg(&v[idx[2]].0)]);
         tm.push([v[idx[0]].1, v[idx[1]].1, v[idx[2]].1]);
     }
     // квантованные ключи вершин и таблица позиций ф32 по ключу
     let mut key = vec![(0i64, 0i64, 0i64); n * 3];
-    let mut pos32: std::collections::HashMap<(i64, i64, i64), V3> =
-        std::collections::HashMap::with_capacity(n * 3);
+    let mut pos32: FM<(i64, i64, i64), V3> = FM::new();
     for i in 0..n {
         for k in 0..3 {
             let p = fm_key(&tp[i][k]);
@@ -1309,7 +1302,7 @@ pub fn fm_to_polys(
 
     // ---- склейка компланарных треугольников одной панели в полигоны ----
     // ключ ребра (упорядоченный) -> индексы треугольников с таким ребром
-    let mut edge_map: std::collections::HashMap<K6, Vec<usize>> = std::collections::HashMap::new();
+    let mut edge_map: FM<K6, Vec<usize>> = FM::new();
     for i in 0..n {
         for e in 0..3 {
             let a = key[i * 3 + e];
@@ -1343,7 +1336,10 @@ pub fn fm_to_polys(
         }
         used[i] = true;
         let mut g = vec![i];
-        if !weld {
+        // склейку включаем только для кузова (mirror_x=false): у отзеркаленных
+        // колёс компланарные треугольники сливаются в «полусферы» и дырявые
+        // многоугольники, из-за чего модель выглядит прозрачной
+        if !weld || mirror_x {
             groups.push(g);
             continue;
         }
@@ -1377,7 +1373,7 @@ pub fn fm_to_polys(
     // ---- контур группы -> выпуклый полигон ----
     let mut polys: Vec<Poly> = Vec::with_capacity(groups.len());
     for g in groups.iter() {
-        let mut cnt: std::collections::HashMap<K6, u32> = std::collections::HashMap::new();
+        let mut cnt: FM<K6, u32> = FM::new();
         for &t in g.iter() {
             for e in 0..3 {
                 *cnt.entry(tedges[t][e]).or_insert(0) += 1;
@@ -1429,9 +1425,9 @@ pub fn fm_to_polys(
     // вес по материалу: окрашенный металл, стекло и хром усредняются между
     // собой; тёмный пластик (торцы зазоров, молдинги, арки) остаётся резким,
     // поэтому линии зазоров читаются как линии, а не как плавный переход.
-    if weld {
-        let mut acc: std::collections::HashMap<(i64, i64, i64), (f32, f32, f32)> =
-            std::collections::HashMap::new();
+    if weld && !mirror_x {
+        let mut acc: FM<(i64, i64, i64), (f32, f32, f32)> =
+            FM::new();
         for p in polys.iter() {
             for x in p.v.iter() {
                 if !fm_smoothable(x.m) {

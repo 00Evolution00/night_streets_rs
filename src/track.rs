@@ -219,6 +219,10 @@ pub struct Shortcut {
     pub id: usize,
     pub entry_side: i32,
     pub exit_side: i32,
+    /// Индекс точки срезки, где она входит в полосу основной дороги у въезда.
+    pub k_entry: usize,
+    /// Индекс точки срезки, где она выходит на основную дорогу у выезда.
+    pub k_exit: usize,
 }
 
 pub struct Track {
@@ -386,14 +390,29 @@ impl Track {
             let v1 = road.pts[n.saturating_sub(9)] - self.road.pts[b];
             let entry_side = if v0.dot(self.road.right[a]) > 0.0 { 1 } else { -1 };
             let exit_side = if v1.dot(self.road.right[b]) > 0.0 { 1 } else { -1 };
-            for i in a..(a + 14) {
+            // Где срезка физически входит в полосу основной дороги (на въезде и на выезде).
+            // Нужны для корректных стен/стыков: у Industrial Zone кривая Безье начинается
+            // от осевой, но возвращается в полосу только ближе к середине первых сегментов,
+            // из-за чего раньше возникали "невидимая стена" при заезде и выброс на трассу при выезде.
+            let reach = ROAD_HALF - 2.0;
+            let mut k_entry = 0usize;
+            while k_entry + 1 < n && (road.pts[k_entry] - self.road.pts[a]).len() > reach {
+                k_entry += 1;
+            }
+            let mut k_exit = n - 1;
+            while k_exit > 0 && (road.pts[k_exit] - self.road.pts[b]).len() > reach {
+                k_exit -= 1;
+            }
+            let g_in = (k_entry as i32 / 4 + 6).max(14) as usize;
+            for i in a..((a + g_in).min(m)) {
                 self.gap[i] = entry_side as i8;
             }
-            for i in (b - 13)..=b {
+            let g_out = ((n - 1 - k_exit) as i32 / 4 + 6).max(14) as usize;
+            for i in (b.saturating_sub(g_out))..=b {
                 self.gap[i] = exit_side as i8;
             }
             let id = self.shortcuts.len();
-            self.shortcuts.push(Shortcut { road, a, b, id, entry_side, exit_side });
+            self.shortcuts.push(Shortcut { road, a, b, id, entry_side, exit_side, k_entry, k_exit });
         }
     }
 
@@ -404,6 +423,15 @@ impl Track {
         let mut k = i;
         for (si, sc) in self.shortcuts.iter().enumerate() {
             if sc.a as i32 - 30 <= i as i32 && i as i32 <= sc.b as i32 + 30 {
+                // Пока машина физически ещё в полосе основной дороги у въезда/выезда,
+                // считаем её едущей по основной дороге. Иначе узкая срезка "перехватывает"
+                // машину боком на прямом участке и коллизия швыряет/телепортирует её.
+                if i >= sc.a && i < sc.a + 14 && (pos - self.road.pts[i]).len() < ROAD_HALF - 1.5 {
+                    continue;
+                }
+                if i > sc.b.saturating_sub(14) && i <= sc.b && (pos - self.road.pts[i]).len() < ROAD_HALF - 1.5 {
+                    continue;
+                }
                 let (ks, d2s) = sc.road.nearest(pos, None, 0);
                 if d2s < d2 {
                     surf = Surf::Short(si);

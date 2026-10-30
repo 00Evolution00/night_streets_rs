@@ -407,19 +407,48 @@ impl Car {
         let info = tr.surface(self.pos, self.idx, 40);
         let on_main = info.surf == Surf::Main;
         let road = tr.road_of(info.surf);
-        self.on_short = !on_main && info.k >= 9 && info.k + 10 <= road.n();
-        let limit = road.half - 1.2;
+        let mut lat_limit = road.half - 1.2;
+        if let Surf::Short(si) = info.surf {
+            let sc = &tr.shortcuts[si];
+            self.on_short = info.k >= sc.k_entry && info.k + (sc.road.n() - sc.k_exit) <= sc.road.n();
+            // У стыков с основной дорогой ширина "коридора" расширяется до полосы
+            // основной дороги: иначе на въезде/выезде машина ловила невидимый удар
+            // об край узкой срезки, а при выезде её выплёвывало телепортом на трассу.
+            let pad = ROAD_HALF - SC_HALF;
+            if info.k < sc.k_entry {
+                let t = (info.k as f32 / (sc.k_entry.max(1) as f32)).clamp(0.0, 1.0);
+                lat_limit += pad * (1.0 - t);
+            } else if info.k > sc.k_exit {
+                let rem = (sc.road.n() - 1 - sc.k_exit).max(1) as f32;
+                let t = ((sc.road.n() - 1 - info.k) as f32 / rem).clamp(0.0, 1.0);
+                lat_limit += pad * (1.0 - t);
+            }
+        } else {
+            self.on_short = false;
+        }
+        let limit = lat_limit;
         let mut impact = 0.0f32;
         if info.lat.abs() > limit {
             let s: f32 = if info.lat > 0.0 { 1.0 } else { -1.0 };
-            let skip = if on_main {
-                tr.gap[info.k] as f32 == s
-            } else {
-                info.k < 9 || info.k + 10 > road.n()
+            let skip = match info.surf {
+                Surf::Main => tr.gap[info.k] as f32 == s,
+                Surf::Short(si) => {
+                    // у стыков стена срезки отсутствует (переход в полосу основной дороги)
+                    let sc = &tr.shortcuts[si];
+                    info.k < sc.k_entry || info.k > sc.k_exit
+                }
             };
             if !skip {
                 let rt = road.right[info.k];
-                self.pos -= rt * (s * (info.lat.abs() - limit));
+                let corr = s * (info.lat.abs() - limit);
+                if corr > 3.5 {
+                    // Позиция сильно рассинхронизирована с поверхностью (например, после
+                    // удара/скольжения у стыка). Мягко возвращаем на дорогу вместо рывка,
+                    // который выглядел как телепорт.
+                    self.pos -= rt * (s * corr * (6.0 * dt).min(0.5));
+                } else {
+                    self.pos -= rt * (s * corr);
+                }
                 let out = self.vel.dot(rt) * s;
                 if out > 0.0 {
                     self.vel -= rt * (s * out * 1.5);

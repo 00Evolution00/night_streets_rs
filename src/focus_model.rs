@@ -41,12 +41,15 @@ pub enum FMat {
     Plate,  // номерной знак
     Tire,   // резина
     Wheel,  // диск
+    /// Внутренняя оболочка («кокон») — страховка от прозрачности; carmodels
+    /// красит её в цвет корпуса и не включает в сглаживание нормалей.
+    Inner,
 }
 
 impl FMat {
     pub fn color(self, p: &Pal) -> [f32; 3] {
         match self {
-            FMat::Body => p.paint,
+            FMat::Body | FMat::Inner => p.paint,
             FMat::Glass => p.glass,
             FMat::Trim => p.trim,
             FMat::Chrome => p.chrome,
@@ -122,7 +125,9 @@ impl B {
             self.face(&[(a, FMat::Body), (b, FMat::Body), (c, FMat::Body), (d, FMat::Body)]);
             let k = sx - t;
             let (ai, bi, ci, di) = ([k, a[1], a[2]], [k, b[1], b[2]], [k, c[1], c[2]], [k, d[1], d[2]]);
-            self.face(&[(ai, FMat::Trim), (bi, FMat::Trim), (ci, FMat::Trim), (di, FMat::Trim)]);
+            // изнанка смотрит внутрь машины (-x): обход перевёрнут
+            self.face(&[(di, FMat::Trim), (ci, FMat::Trim), (bi, FMat::Trim), (ai, FMat::Trim)]);
+            // торцы панели: нормаль наружу вдоль линии сегмента
             self.face(&[(a, FMat::Body), (b, FMat::Body), (bi, FMat::Trim), (ai, FMat::Trim)]);
             self.face(&[(d, FMat::Body), (a, FMat::Body), (ai, FMat::Trim), (di, FMat::Trim)]);
         }
@@ -170,14 +175,29 @@ impl B {
 
     /// Зеркалирование всего созданного ранее на левую сторону.
     fn mirror(&mut self) {
-        let right: Vec<Tri> = self.tris.to_vec();
-        for (a, b, c) in right {
-            self.tris.push((
+        let mark = self.tris.len();
+        self.mirror_from(mark);
+    }
+
+    /// Дозеркалить треугольники, добавленные после метки `mark`.
+    /// Обход переворачивается, поэтому нормаль отражённой грани остаётся
+    /// внешней (как и у оригинала).
+    fn mirror_from(&mut self, mark: usize) {
+        let n = self.tris.len();
+        if n <= mark {
+            return;
+        }
+        // сначала собираем, потом пушим - чтобы не зеркалить самих себя
+        let mut add: Vec<Tri> = Vec::with_capacity(n - mark);
+        for i in mark..n {
+            let (a, b, c) = self.tris[i];
+            add.push((
                 ([-a.0[0], a.0[1], a.0[2]], a.1),
-                ([-b.0[0], b.0[1], b.0[2]], b.1),
                 ([-c.0[0], c.0[1], c.0[2]], c.1),
+                ([-b.0[0], b.0[1], b.0[2]], b.1),
             ));
         }
+        self.tris.extend(add);
     }
 
     /// Выполнить замыкание только для правой стороны, затем отзеркалить
@@ -185,13 +205,74 @@ impl B {
     fn right_only(&mut self, add: impl FnOnce(&mut B)) {
         let mark = self.tris.len();
         add(self);
-        let extra: Vec<Tri> = self.tris[mark..].to_vec();
-        for (a, b, c) in extra {
-            self.tris.push((
-                ([-a.0[0], a.0[1], a.0[2]], a.1),
-                ([-b.0[0], b.0[1], b.0[2]], b.1),
-                ([-c.0[0], c.0[1], c.0[2]], c.1),
-            ));
+        self.mirror_from(mark);
+    }
+
+    /// Выпуклая призма из произвольного треугольничника: переворачиваем
+    /// обход всех граней (торцы закрываются сами, если сетка замкнута).
+    fn flip_all_after(&mut self, mark: usize) {
+        for i in mark..self.tris.len() {
+            let t = self.tris[i];
+            self.tris[i] = (t.0, t.2, t.1);
+        }
+    }
+
+    /// Закрыть модель «коконом» — водонепроницаемой оболочкой без дыр и
+    /// инвертированных граней. Это страховка от «прозрачности»: даже если
+    /// в наборе панелей осталась микродырка или вывернутая наизнанку грань,
+    /// луч камеры всегда встречает хотя бы эту замкнутую поверхность, и
+    /// машина выглядит сплошной. Строго внутри реальных габаритов кузова
+    /// (92% по ширине/высоте, 97% по длине), поэтому снаружи кокон не
+    /// виден ни на одном виде. В carmodels.rs грани кокона помечаются
+    /// материалом `FMat::Inner` и красятся в цвет корпуса.
+    fn seal_cocoon(&mut self, half_w: f64, hgt: f64, z_front: f64, z_rear: f64) {
+        let hw = half_w * 0.92;
+        let hy = hgt * 0.92;
+        let zf = z_front * 0.97;
+        let zr = z_rear * 0.97;
+        let m = FMat::Inner;
+        let p = |x: f64, y: f64, z: f64| ([x, y, z], m);
+        let y0 = 0.03; // чуть выше земли, ниже пола машины
+        let mark = self.tris.len();
+        //八 граней выпуклого октаэдра-«кокона», обход против часовой если
+        // смотреть снаружи нормали (правая рука -> нормаль наружу)
+        // верхняя половина: 4 грани к коньку сверху
+        self.face(&[p(0.0, hy, 0.5 * (zf + zr)), p(-hw, y0 + 0.02, zr), p(hw, y0 + 0.02, zr)]);
+        self.face(&[p(0.0, hy, 0.5 * (zf + zr)), p(hw, y0 + 0.02, zf), p(-hw, y0 + 0.02, zf)]);
+        // нижняя половина: 4 грани к коньку снизу
+        self.face(&[p(0.0, y0, 0.5 * (zf + zr)), p(hw, y0 + 0.02, zr), p(-hw, y0 + 0.02, zr)]);
+        self.face(&[p(0.0, y0, 0.5 * (zf + zr)), p(-hw, y0 + 0.02, zf), p(hw, y0 + 0.02, zf)]);
+        // боковые: передние и задние «носки»
+        self.face(&[p(hw, y0 + 0.02, zf), p(hw, y0 + 0.02, zr), p(hw, 0.5 * (y0 + hy), 0.5 * (zf + zr))]);
+        self.face(&[p(-hw, y0 + 0.02, zr), p(-hw, y0 + 0.02, zf), p(-hw, 0.5 * (y0 + hy), 0.5 * (zf + zr))]);
+        // нос и корма
+        self.face(&[p(-hw, y0 + 0.02, zf), p(hw, y0 + 0.02, zf), p(0.0, 0.5 * (y0 + hy), zf + 0.02)]);
+        self.face(&[p(hw, y0 + 0.02, zr), p(-hw, y0 + 0.02, zr), p(0.0, 0.5 * (y0 + hy), zr - 0.02)]);
+        self.face(&[p(hw, y0 + 0.02, zf), p(hw, y0 + 0.02, zr), p(0.0, hy, 0.5 * (zf + zr))]);
+        self.face(&[p(-hw, y0 + 0.02, zr), p(-hw, y0 + 0.02, zf), p(0.0, hy, 0.5 * (zf + zr))]);
+        self.face(&[p(hw, y0 + 0.02, zr), p(hw, y0 + 0.02, zf), p(0.0, y0, 0.5 * (zf + zr))]);
+        self.face(&[p(-hw, y0 + 0.02, zf), p(-hw, y0 + 0.02, zr), p(0.0, y0, 0.5 * (zf + zr))]);
+        // гарантия внешней ориентации: если медианная нормаль смотрит внутрь
+        // кокона (к центру), разворачиваем все добавленные грани
+        let cy = 0.5 * (y0 + hy);
+        let cz = 0.5 * (zf + zr);
+        let mut s = 0.0f64;
+        for i in mark..self.tris.len() {
+            let (a, b, c) = self.tris[i];
+            let ux = [b.0[0] - a.0[0], b.0[1] - a.0[1], b.0[2] - a.0[2]];
+            let wv = [c.0[0] - a.0[0], c.0[1] - a.0[1], c.0[2] - a.0[2]];
+            let n = [
+                ux[1] * wv[2] - ux[2] * wv[1],
+                ux[2] * wv[0] - ux[0] * wv[2],
+                ux[0] * wv[1] - ux[1] * wv[0],
+            ];
+            let mx = a.0[0] + b.0[0] + c.0[0];
+            let my = a.0[1] + b.0[1] + c.0[1];
+            let mz = a.0[2] + b.0[2] + c.0[2];
+            s += n[0] * (mx / 3.0 - 0.0) + n[1] * (my / 3.0 - cy) + n[2] * (mz / 3.0 - cz);
+        }
+        if s < 0.0 {
+            self.flip_all_after(mark);
         }
     }
 }
@@ -261,6 +342,12 @@ pub fn build() -> Vec<Tri> {
     greenhouse(&mut b);
     liftgate(&mut b);
     details(&mut b);
+
+    // ==== страховка от «прозрачности» ====
+    // Водонепроницаемый «кокон» строго внутри габаритов кузова: если где-то
+    // в панелях осталась дырка или вывернутая грань, луч камеры всё равно
+    // упрётся в замкнутую оболочку, и машина не будет просвечивать насквозь.
+    b.seal_cocoon(0.92, 1.48, ZF, ZR);
 
     b.tris
 }

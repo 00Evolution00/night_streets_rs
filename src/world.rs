@@ -242,7 +242,7 @@ pub fn build_world(tr: &Track) -> WorldMesh {
                 lp,
                 bg,
             );
-            if k >= 9 && k + 11 <= n {
+            if k >= sc.k_entry && k + 1 <= sc.k_exit {
                 for &sd in [-1.0f32, 1.0].iter() {
                     let off = hs + 0.5;
                     let lo0 = p + r * (sd * off);

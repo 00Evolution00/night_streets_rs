@@ -14,3 +14,9 @@ opt-level = 2
 opt-level = 3
 lto = true
 codegen-units = 1
+
+# fontdue 0.9.5 (transitive dep of macroquad) uses u8/u16/u32::cast_signed(),
+# which does not exist as an inherent method -> E0599 on many machines (WSL included).
+# We ship a patched copy in vendor/ so the build works on ANY machine from a clean cache.
+[patch.crates-io]
+fontdue = { path = "vendor/fontdue-0.9.5" }
