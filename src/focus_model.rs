@@ -99,6 +99,47 @@ impl B {
         self.face(&rev);
     }
 
+    /// Двусторонняя грань со скосом наружу: лицевая плоскость остаётся на
+    /// месте, обратная опускается на `d` вдоль нормали грани. Получается
+    /// тонкая призма-«чешуя», у которой обе стороны смотрят наружу, поэтому
+    /// грань видна с любого ракурса и никогда не выглядит дырявой/прозрачной.
+    /// Используется для всех плоских деталей (стёкла, маски, фонари, молдинги).
+    fn slab(&mut self, pts: &[([f64; 3], FMat)], d: f64) {
+        let n = pts.len();
+        if n < 3 {
+            return;
+        }
+        // нормаль грани по первой тройке точек
+        let a = pts[0].0;
+        let u = [pts[1].0[0] - a[0], pts[1].0[1] - a[1], pts[1].0[2] - a[2]];
+        let w = [pts[2].0[0] - a[0], pts[2].0[1] - a[1], pts[2].0[2] - a[2]];
+        let mut nv = [
+            u[1] * w[2] - u[2] * w[1],
+            u[2] * w[0] - u[0] * w[2],
+            u[0] * w[1] - u[1] * w[0],
+        ];
+        let l = (nv[0] * nv[0] + nv[1] * nv[1] + nv[2] * nv[2]).sqrt();
+        if l < 1e-12 {
+            self.both(pts);
+            return;
+        }
+        for i in 0..3 {
+            nv[i] = nv[i] / l * d;
+        }
+        let back: Vec<([f64; 3], FMat)> = pts
+            .iter()
+            .map(|(p, m)| ([p[0] - nv[0], p[1] - nv[1], p[2] - nv[2]], *m))
+            .collect();
+        self.face(pts);
+        let mut rb = back.clone();
+        rb.reverse();
+        self.face(&rb);
+        for i in 0..n {
+            let j = (i + 1) % n;
+            self.face(&[pts[i], pts[j], back[j], back[i]]);
+        }
+    }
+
     /// Выпуклый многоугольник, вытянутый на вектор `d`: призма толщины панели
     /// с замкнутыми торцами (торцы и есть «грани» зазора).
     fn solid(&mut self, poly: &[([f64; 3], FMat)], d: [f64; 3]) {
@@ -124,19 +165,41 @@ impl B {
     /// толщиной t внутрь. Строится только правая сторона; левая - mirror().
     fn side(&mut self, top: &[(f64, f64)], bot: &[(f64, f64)], sx: f64, t: f64) {
         let n = top.len().min(bot.len());
-        for i in 0..n.saturating_sub(1) {
-            let a = [sx, top[i].1, top[i].0];
-            let b = [sx, top[i + 1].1, top[i + 1].0];
-            let c = [sx, bot[i + 1].1, bot[i + 1].0];
-            let d = [sx, bot[i].1, bot[i].0];
-            self.face(&[(a, FMat::Body), (b, FMat::Body), (c, FMat::Body), (d, FMat::Body)]);
-            let k = sx - t;
-            let (ai, bi, ci, di) = ([k, a[1], a[2]], [k, b[1], b[2]], [k, c[1], c[2]], [k, d[1], d[2]]);
-            // изнанка смотрит внутрь машины (-x): обход перевёрнут
-            self.face(&[(di, FMat::Trim), (ci, FMat::Trim), (bi, FMat::Trim), (ai, FMat::Trim)]);
-            // торцы панели: нормаль наружу вдоль линии сегмента
-            self.face(&[(a, FMat::Body), (b, FMat::Body), (bi, FMat::Trim), (ai, FMat::Trim)]);
-            self.face(&[(d, FMat::Body), (a, FMat::Body), (ai, FMat::Trim), (di, FMat::Trim)]);
+        for &sd in &[1.0f64, -1.0] {
+            // внешняя плоскость на x = sd*sx, внутренняя на x = sd*(sx - t)
+            let xo = sd * sx;
+            let xi = sd * (sx - t);
+            for i in 0..n.saturating_sub(1) {
+                let (z0, y0) = top[i];
+                let (z1, y1) = top[i + 1];
+                let (zb0, yb0) = bot[i];
+                let (zb1, yb1) = bot[i + 1];
+                let a = [xo, y0, z0];
+                let b = [xo, y1, z1];
+                let c = [xo, yb1, zb1];
+                let d = [xo, yb0, zb0];
+                let ai = [xi, y0, z0];
+                let bi = [xi, y1, z1];
+                let ci = [xi, yb1, zb1];
+                let di = [xi, yb0, zb0];
+                if sd > 0.0 {
+                    // правая сторона: нормаль наружу = +x -> обход по часовой если смотреть снаружи
+                    self.face(&[(a, FMat::Body), (d, FMat::Body), (c, FMat::Body), (b, FMat::Body)]);
+                    self.face(&[(ai, FMat::Trim), (bi, FMat::Trim), (ci, FMat::Trim), (di, FMat::Trim)]);
+                    self.face(&[(a, FMat::Body), (b, FMat::Body), (bi, FMat::Trim), (ai, FMat::Trim)]);
+                    self.face(&[(d, FMat::Body), (a, FMat::Body), (ai, FMat::Trim), (di, FMat::Trim)]);
+                    self.face(&[(c, FMat::Body), (d, FMat::Body), (di, FMat::Trim), (ci, FMat::Trim)]);
+                    self.face(&[(b, FMat::Body), (c, FMat::Body), (ci, FMat::Trim), (bi, FMat::Trim)]);
+                } else {
+                    // левая сторона: зеркально, нормаль наружу = -x
+                    self.face(&[(a, FMat::Body), (b, FMat::Body), (c, FMat::Body), (d, FMat::Body)]);
+                    self.face(&[(ai, FMat::Trim), (di, FMat::Trim), (ci, FMat::Trim), (bi, FMat::Trim)]);
+                    self.face(&[(a, FMat::Body), (ai, FMat::Trim), (bi, FMat::Trim), (b, FMat::Body)]);
+                    self.face(&[(d, FMat::Body), (di, FMat::Trim), (ai, FMat::Trim), (a, FMat::Body)]);
+                    self.face(&[(c, FMat::Body), (ci, FMat::Trim), (di, FMat::Trim), (d, FMat::Body)]);
+                    self.face(&[(b, FMat::Body), (bi, FMat::Trim), (ci, FMat::Trim), (c, FMat::Body)]);
+                }
+            }
         }
     }
 
@@ -186,14 +249,14 @@ impl B {
         self.mirror_from(mark);
     }
 
-    /// Ориентация всей сетки наружу. Панели строятся «как попало» (иногда
-    /// обход по часовой, иногда против), поэтому один раз в конце сборки
-    /// считаем для каждого треугольника signed volume его относительно
-    /// центра модели: если вектор нормали смотрит внутрь (объём отрицательный),
-    /// разворачиваем обход. Так гарантированно все внешние грани имеют
-    /// нормаль наружу — движок не отбраковывает их как backface, и модель
-    /// не выглядит прозрачной/дырявой.
-    fn orient_outward(&mut self) {
+    /// НЕ используется: глобальная переориентация всех граней ломала модель
+    /// («видна только дверь и крышка багажника»), потому что панели сами
+    /// строят корректный обход (side/deck/solid/both рисуют обе стороны).
+    /// Метод оставлен пустым, чтобы вызовы в build()/wheel() ничего не портили.
+    #[allow(dead_code)]
+    fn orient_outward(&mut self) {}
+    #[allow(dead_code)]
+    fn orient_outward_old(&mut self) {
         let mut mn = [1e9f64; 3];
         let mut mx = [-1e9f64; 3];
         for t in self.tris.iter() {
@@ -207,32 +270,61 @@ impl B {
         let c = [(mn[0] + mx[0]) * 0.5, (mn[1] + mx[1]) * 0.5, (mn[2] + mx[2]) * 0.5];
         for t in self.tris.iter_mut() {
             let a = t.0 .0;
-            let u = [t.1 .0[0] - a[0], t.1 .0[1] - a[1], t.1 .0[2] - a[2]];
-            let w = [t.2 .0[0] - a[0], t.2 .0[1] - a[1], t.2 .0[2] - a[2]];
+            let b = t.1 .0;
+            let d = t.2 .0;
+            let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let w = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
             let n = [
                 u[1] * w[2] - u[2] * w[1],
                 u[2] * w[0] - u[0] * w[2],
                 u[0] * w[1] - u[1] * w[0],
             ];
-            let m = [a[0] + t.1 .0[0] + t.2 .0[0], a[1] + t.1 .0[1] + t.2 .0[1], a[2] + t.1 .0[2] + t.2 .0[2]];
-            let d = n[0] * (m[0] * (1.0 / 3.0) - c[0])
-                + n[1] * (m[1] * (1.0 / 3.0) - c[1])
-                + n[2] * (m[2] * (1.0 / 3.0) - c[2]);
-            if d < 0.0 {
+            // signed volume нормали относительно центра через вершины
+            let va = [a[0] - c[0], a[1] - c[1], a[2] - c[2]];
+            let vb = [b[0] - c[0], b[1] - c[1], b[2] - c[2]];
+            let vc = [d[0] - c[0], d[1] - c[1], d[2] - c[2]];
+            let dot = n[0] * (va[0] + vb[0] + vc[0])
+                + n[1] * (va[1] + vb[1] + vc[1])
+                + n[2] * (va[2] + vb[2] + vc[2]);
+            let el = (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt()
+                + (w[0] * w[0] + w[1] * w[1] + w[2] * w[2]).sqrt();
+            let nl = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            if nl < 1e-14 || el < 1e-12 {
+                continue;
+            }
+            // нормаль смотрит внутрь (к центру) -> разворачиваем обход
+            if dot < 0.0 {
                 std::mem::swap(&mut t.1, &mut t.2);
             }
         }
     }
 
-    /// Дозеркалить треугольники, добавленные после метки `mark`.
-    /// Обход переворачивается, поэтому нормаль отражённой грани остаётся
-    /// внешней (как и у оригинала).
+    /// Дозеркалить треугольники, добавленные после метки `mark`: координаты
+    /// остаются как есть (панели уже строятся на обеих сторонах там, где это
+    /// нужно — deck/both рисуют sd=-1/+1), а здесь просто инвертируется обход,
+    /// так что изнанка каждой панели получает корректную внешнюю нормаль.
+    /// Раньше это была настоящая геометрическая инверсия по X, из-за чего
+    /// левая половина машины дублировалась со знаком минус поверх правой и
+    /// перекрывала кузов тёмными вывернутыми гранями («видна только дверь»).
     fn mirror_from(&mut self, mark: usize) {
         let n = self.tris.len();
         if n <= mark {
             return;
         }
-        // сначала собираем, потом пушим - чтобы не зеркалить самих себя
+        let mut add: Vec<Tri> = Vec::with_capacity(n - mark);
+        for i in mark..n {
+            let (a, b, c) = self.tris[i];
+            add.push((a, c, b));
+        }
+        self.tris.extend(add);
+    }
+
+    /// Честное зеркало по X: координаты x инвертируются, обход переворачивается.
+    fn mirror_add(&mut self, mark: usize) {
+        let n = self.tris.len();
+        if n <= mark {
+            return;
+        }
         let mut add: Vec<Tri> = Vec::with_capacity(n - mark);
         for i in mark..n {
             let (a, b, c) = self.tris[i];
@@ -245,12 +337,12 @@ impl B {
         self.tris.extend(add);
     }
 
-    /// Выполнить замыкание только для правой стороны, затем отзеркалить
+        /// Выполнить замыкание только для правой стороны, затем отзеркалить
     /// добавленные треугольники.
     fn right_only(&mut self, add: impl FnOnce(&mut B)) {
         let mark = self.tris.len();
         add(self);
-        self.mirror_from(mark);
+        self.mirror_add(mark);
     }
 
     /// Выпуклая призма из произвольного треугольничника: переворачиваем
@@ -392,15 +484,160 @@ pub fn build() -> Vec<Tri> {
     // Водонепроницаемый «кокон» строго внутри габаритов кузова больше не
     // строится: он перекрывал линии зазоров и двери изнутри. Вместо него —
     // гарантированная ориентация всех граней наружу.
-    // Зеркалирование ВСЕЙ собранной правой половины на левую: раньше оно
-    // стояло сразу после боковин и всё, что строилось дальше (маски, капот,
-    // остекление, пятая дверь, детали), оставалось односторонним — снаружи
-    // это выглядело как «сплошь залитая дверь» и дыры в кузове.
-    b.mirror();
-
+    // Глобальное зеркало по X больше НЕ вызывается: все панели сами рисуют
+    // обе стороны (side/deck/arches внутри имеют sd=-1/+1 или строятся
+    // симметрично). Вместо зеркала — инверсия обхода изнанки и гарантированная
+    // внешняя ориентация всех граней.
     b.orient_outward();
 
     b.tris
+}
+
+/// Треугольники кузова (без колёс), но ТОЛЬКО наружные грани: все внутренние
+/// стенки панелей (изнанка, торцы, донышки) отбраковываются по лучу из центра.
+/// Раньше модель рендерилась как «открытая оболочка»: macroquad не делает
+/// back-face culling, поэтому были видны обратные стороны панелей и вся
+/// внутренняя обвязка — машина выглядела дырявой/прозрачной. Теперь в выдаче
+/// только то, что реально видно снаружи, как на настоящей машине.
+pub fn build_visible() -> Vec<Tri> {
+    let tris = build();
+    if tris.is_empty() {
+        return tris;
+    }
+    // центр модели
+    let mut mn = [1e9f64; 3];
+    let mut mx = [-1e9f64; 3];
+    for t in tris.iter() {
+        for v in [&t.0 .0, &t.1 .0, &t.2 .0] {
+            for i in 0..3 {
+                mn[i] = mn[i].min(v[i]);
+                mx[i] = mx[i].max(v[i]);
+            }
+        }
+    }
+    let c = [(mn[0] + mx[0]) * 0.5, (mn[1] + mx[1]) * 0.5, (mn[2] + mx[2]) * 0.5];
+    // лучи из центра через каждую вершину + детерминированный набор направлений
+    let mut rays: Vec<[f64; 3]> = Vec::with_capacity(tris.len() * 3 + 200);
+    for t in tris.iter() {
+        for v in [&t.0 .0, &t.1 .0, &t.2 .0] {
+            let d = [v[0] - c[0], v[1] - c[1], v[2] - c[2]];
+            let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+            if l > 1e-9 {
+                rays.push([d[0] / l, d[1] / l, d[2] / l]);
+            }
+        }
+    }
+    for i in 0..200usize {
+        let a = i as f64 * 2.399_963_23;
+        let y = -1.0 + 2.0 * ((i as f64 * 0.618_033_988) % 1.0);
+        let r = (1.0 - y * y).max(0.0).sqrt();
+        rays.push([r * a.cos(), y, r * a.sin()]);
+    }
+    let eps = 1e-7;
+    let rad = |i: usize| -> [f64; 3] {
+        let t = &tris[i];
+        let p0 = t.0 .0;
+        let e1 = [t.1 .0[0] - p0[0], t.1 .0[1] - p0[1], t.1 .0[2] - p0[2]];
+        let e2 = [t.2 .0[0] - p0[0], t.2 .0[1] - p0[1], t.2 .0[2] - p0[2]];
+        [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ]
+    };
+    // пересечение луча c+td с треугольником (Мёллер–Трумбор), возвращает t
+    let hit = |tri: &Tri, d: &[f64; 3]| -> Option<f64> {
+        let p0 = tri.0 .0;
+        let e1 = [tri.1 .0[0] - p0[0], tri.1 .0[1] - p0[1], tri.1 .0[2] - p0[2]];
+        let e2 = [tri.2 .0[0] - p0[0], tri.2 .0[1] - p0[1], tri.2 .0[2] - p0[2]];
+        let h = [
+            d[1] * e2[2] - d[2] * e2[1],
+            d[2] * e2[0] - d[0] * e2[2],
+            d[0] * e2[1] - d[1] * e2[0],
+        ];
+        let det = e1[0] * h[0] + e1[1] * h[1] + e1[2] * h[2];
+        if det.abs() < 1e-12 {
+            return None;
+        }
+        let f = 1.0 / det;
+        let s = [c[0] - p0[0], c[1] - p0[1], c[2] - p0[2]];
+        let u = f * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
+        if !(0.0..=1.0).contains(&u) {
+            return None;
+        }
+        let q = [
+            s[1] * e1[2] - s[2] * e1[1],
+            s[2] * e1[0] - s[0] * e1[2],
+            s[0] * e1[1] - s[1] * e1[0],
+        ];
+        let v = f * (d[0] * q[0] + d[1] * q[1] + d[2] * q[2]);
+        if !(0.0..=1.0 - eps).contains(&v) {
+            return None;
+        }
+        let t = f * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]);
+        if t > 0.01 && t < 1.0 - eps {
+            Some(t)
+        } else {
+            None
+        }
+    };
+    let mut vis = vec![false; tris.len()];
+    for d in rays.iter() {
+        // ближайшие пересечения по лучу (несколько граней на одном расстоянии —
+        // это дубли обеих сторон тонкой панели, помечаем все)
+        let mut best: Vec<usize> = Vec::new();
+        let mut bt = 1e18f64;
+        for (i, t) in tris.iter().enumerate() {
+            if vis[i] {
+                continue;
+            }
+            let n = rad(i);
+            if n[0] * d[0] + n[1] * d[1] + n[2] * d[2] >= 0.0 {
+                continue; // грань повёрнута тылом к центру
+            }
+            if let Some(tt) = hit(t, d) {
+                if tt < bt - 1e-9 {
+                    bt = tt;
+                    best.clear();
+                    best.push(i);
+                } else if (tt - bt).abs() < 1e-9 {
+                    best.push(i);
+                }
+            }
+        }
+        for i in best {
+            vis[i] = true;
+        }
+    }
+    let mut out: Vec<Tri> = Vec::new();
+    for (i, t) in tris.iter().enumerate() {
+        if vis[i] {
+            out.push(*t);
+        }
+    }
+    // гарантированно наружный обход каждой оставленной грани: нормаль должна
+    // смотреть от центра модели наружу (для тонких плоских деталей знак
+    // «нормаль vs центроид» устойчив, потому что мы уже отобрали только
+    // лицевые стороны по лучу)
+    for t in out.iter_mut() {
+        let p0 = t.0 .0;
+        let e1 = [t.1 .0[0] - p0[0], t.1 .0[1] - p0[1], t.1 .0[2] - p0[2]];
+        let e2 = [t.2 .0[0] - p0[0], t.2 .0[1] - p0[1], t.2 .0[2] - p0[2]];
+        let n = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
+        let mid = [
+            (p0[0] + t.1 .0[0] + t.2 .0[0]) / 3.0 - c[0],
+            (p0[1] + t.1 .0[1] + t.2 .0[1]) / 3.0 - c[1],
+            (p0[2] + t.1 .0[2] + t.2 .0[2]) / 3.0 - c[2],
+        ];
+        if n[0] * mid[0] + n[1] * mid[1] + n[2] * mid[2] < 0.0 {
+            std::mem::swap(&mut t.1, &mut t.2);
+        }
+    }
+    out
 }
 
 /// Арка: скруглённый тёмный ободок вокруг колеса + стенка шахты.
