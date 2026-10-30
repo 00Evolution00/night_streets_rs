@@ -60,47 +60,16 @@ impl ChunkBuilder {
     }
 
     /// Выпуклый полигон из готовых вершин (веером от первой).
-    /// Обход приводится к согласованному с нормалью: macroquad по умолчанию
-    /// режет грани, у которых экранная площадь отрицательная (back-cull), а
-    /// зеркало камеры (`-x` в draw_model) переворачивает обход. Поэтому
-    /// разворачиваем контур так, чтобы геометрическая нормаль Newell совпадала
-    /// со средним `n` вершин — тогда веер всегда смотрит «лицом» к камере и
-    /// машина не выглядит прозрачной/дырявой.
     pub fn push(&mut self, verts: &[Vert]) {
         let n = verts.len();
         if n < 3 {
             return;
         }
-        // нормалем по Newell из порядка обхода
-        let (mut nx, mut ny, mut nz) = (0.0f32, 0.0f32, 0.0f32);
-        for i in 0..n {
-            let a = verts[i].p;
-            let b = verts[(i + 1) % n].p;
-            nx += (a[1] - b[1]) * (a[2] + b[2]);
-            ny += (a[2] - b[2]) * (a[0] + b[0]);
-            nz += (a[0] - b[0]) * (a[1] + b[1]);
-        }
-        // средняя вершинная нормаль
-        let (mut sx, mut sy, mut sz) = (0.0f32, 0.0f32, 0.0f32);
-        for v in verts.iter() {
-            sx += v.n[0];
-            sy += v.n[1];
-            sz += v.n[2];
-        }
-        let mut order: Box<[Vert]> = verts.to_vec().into_boxed_slice();
-        if nx * sx + ny * sy + nz * sz < 0.0 {
-            // обход против нормали - разворачиваем, сохраняя первую вершину
-            let first = order[0].clone();
-            let mut r: Vec<Vert> = order[1..].to_vec();
-            r.reverse();
-            r.insert(0, first);
-            order = r.into_boxed_slice();
-        }
         if self.v.len() + n > MAX_VERTS || self.i.len() + 3 * (n - 2) > MAX_IDX {
             self.flush();
         }
         let base = self.v.len() as u16;
-        for v in order.iter() {
+        for v in verts.iter() {
             self.v.push(v.clone());
         }
         for k in 1..(n - 1) {
