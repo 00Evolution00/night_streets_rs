@@ -1517,9 +1517,8 @@ pub fn build_body(s: &CarSpec, rgb: Rgb, glow: Option<Rgb>, spoiler_kind: u8) ->
             tire: TIRE,
             rim: [0.62, 0.63, 0.66],
         };
-        let tris = crate::focus_model::build();
-        let mut out = fm_to_polys(&tris, &pal, false, true);
-        orient_out(&mut out);
+        let tris = crate::focus_model::build_visible();
+        let out = fm_to_polys(&tris, &pal, false, true);
         return out;
     }
     let mut b = Builder::new();
@@ -1662,8 +1661,7 @@ pub fn wheel_polys(s: &CarSpec, sx: f32, rim: Rgb, style: u8) -> Vec<Poly> {
             rim,
         };
         let tris = crate::focus_model::wheel(style);
-        let mut out = fm_to_polys(&tris, &pal, sx < 0.0, false);
-        orient_out(&mut out);
+        let out = fm_to_polys(&tris, &pal, sx < 0.0, false);
         return out;
     }
     let r = s.r; // внешний радиус резины (205/50R17 ~ 0.337 м)
