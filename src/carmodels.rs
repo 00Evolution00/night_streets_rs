@@ -192,6 +192,8 @@ pub enum Role {
     GlassSide,
     /// сплошной кузов (центральная стойка)
     Pillar,
+    /// хэтчбек: в этом сегменте сзади - стекло задней двери, а не металл
+    LiftbackGlass,
 }
 
 #[derive(Clone)]
@@ -243,6 +245,37 @@ fn spec(
     wing: [f32; 4],
     extras: Vec<([f32; 3], [f32; 3])>,
 ) -> CarSpec {
+    spec_roles(
+        name, l, w, h, wb, track, r, body, cabin, head, grille, intake, plates, tail, exh, mirror,
+        lip, wing, extras, None,
+    )
+}
+
+/// То же, но с возможностью задать роли сегментов салона (например
+/// `LiftbackGlass` для задней двери хэтчбека).
+#[allow(clippy::too_many_arguments)]
+fn spec_roles(
+    name: &'static str,
+    l: f32,
+    w: f32,
+    h: f32,
+    wb: f32,
+    track: f32,
+    r: f32,
+    body: &[[f32; 6]],
+    cabin: &[[f32; 3]],
+    head: [f32; 4],
+    grille: [f32; 3],
+    intake: [f32; 3],
+    plates: [f32; 2],
+    tail: [f32; 4],
+    exh: [f32; 2],
+    mirror: [f32; 2],
+    lip: [f32; 2],
+    wing: [f32; 4],
+    extras: Vec<([f32; 3], [f32; 3])>,
+    roles: Option<Vec<Role>>,
+) -> CarSpec {
     CarSpec {
         name,
         l,
@@ -253,13 +286,15 @@ fn spec(
         r,
         body: body.to_vec(),
         cabin: cabin.to_vec(),
-        roles: vec![
-            Role::GlassTop,
-            Role::GlassSide,
-            Role::Pillar,
-            Role::GlassSide,
-            Role::GlassTop,
-        ],
+        roles: roles.unwrap_or_else(|| {
+            vec![
+                Role::GlassTop,
+                Role::GlassSide,
+                Role::Pillar,
+                Role::GlassSide,
+                Role::GlassTop,
+            ]
+        }),
         head,
         grille,
         intake,
@@ -303,42 +338,52 @@ fn box_spec(name: &'static str, l: f32, w: f32, h: f32, wb: f32, track: f32, r: 
 /// focus, cobalt, gt3000, evo9, z350, rx7, supra, r34
 pub fn all_car_specs() -> Vec<CarSpec> {
     vec![
-        // Ford Focus II hatchback (2005-2011)
-        spec(
+        // Ford Focus II hatchback (2004-2011): высокий капот с "лобной" гранью,
+        // крутое лобовое, длинная крыша, покатая задняя дверь хэтчбека со стеклом.
+        // Колёса 205/50R17 (r=0.337), база 2.64, колея 1.566.
+        spec_roles(
             "Ford Focus II Hatchback",
             4.34,
             1.84,
-            1.50,
+            1.48,
             2.64,
-            1.58,
-            0.32,
+            1.56,
+            0.337,
             &[
-                [2.17, 0.32, 0.52, 0.60, 0.86, 0.80],
-                [2.08, 0.24, 0.58, 0.72, 0.91, 0.85],
-                [1.75, 0.22, 0.62, 0.86, 0.92, 0.86],
-                [1.00, 0.22, 0.66, 0.97, 0.92, 0.85],
-                [-1.35, 0.22, 0.68, 0.99, 0.92, 0.85],
-                [-2.00, 0.22, 0.68, 0.97, 0.92, 0.85],
-                [-2.17, 0.28, 0.60, 0.90, 0.88, 0.83],
+                [2.17, 0.34, 0.54, 0.62, 0.86, 0.80],
+                [2.08, 0.25, 0.60, 0.76, 0.91, 0.85],
+                [1.75, 0.23, 0.64, 0.90, 0.92, 0.86],
+                [1.00, 0.23, 0.68, 1.00, 0.92, 0.86],
+                [-1.35, 0.23, 0.70, 1.02, 0.92, 0.86],
+                [-1.95, 0.25, 0.70, 1.00, 0.91, 0.85],
+                [-2.17, 0.32, 0.62, 0.92, 0.87, 0.82],
             ],
             &[
                 [1.00, NA, 0.85],
-                [0.15, 1.48, 0.71],
-                [-0.28, 1.49, 0.71],
-                [-0.50, 1.49, 0.71],
-                [-1.62, 1.47, 0.70],
-                [-2.04, NA, 0.80],
+                [0.15, 1.46, 0.72],
+                [-0.28, 1.47, 0.72],
+                [-0.50, 1.47, 0.72],
+                [-1.62, 1.45, 0.71],
+                [-1.98, 1.32, 0.66],
+                [-2.10, NA, 0.80],
             ],
-            [0.60, 0.68, 0.52, 0.13],
-            [0.56, 0.80, 0.13],
-            [0.36, 1.15, 0.13],
-            [0.40, 0.66],
-            [0.70, 0.86, 0.46, 0.20],
+            [0.60, 0.72, 0.52, 0.15],
+            [0.58, 0.70, 0.14],
+            [0.36, 1.16, 0.13],
+            [0.40, 0.62],
+            [0.68, 0.86, 0.44, 0.22],
             [0.55, 0.34],
-            [0.85, 1.06],
-            [1.47, -1.66],
+            [0.85, 1.04],
+            [1.45, -1.66],
             [1.00, -2.12, 1.45, 0.42],
             vec![],
+            Some(vec![
+                Role::GlassTop,    // лобовое стекло
+                Role::GlassSide,   // передние двери
+                Role::Pillar,      // центральная стойка
+                Role::GlassSide,   // задние двери + треугольное стекло
+                Role::LiftbackGlass, // стекло задней двери хэтчбека
+            ]),
         ),
         // Chevrolet Cobalt SS Coupe (2008)
         spec(
@@ -1226,7 +1271,7 @@ pub fn build_body(s: &CarSpec, rgb: Rgb, glow: Option<Rgb>, spoiler_kind: u8) ->
     let cab_f = |i: usize, e: usize| -> (Rgb, Mat) {
         let role = roles[(i / 3).min(roles.len() - 1)];
         let glass = (role == Role::GlassSide && (e == 0 || e == 5))
-            || (role == Role::GlassTop && (e == 2 || e == 3));
+            || ((role == Role::GlassTop || role == Role::LiftbackGlass) && (e == 2 || e == 3));
         if glass {
             (GLASS, Mat::Glass)
         } else {
