@@ -1,7 +1,7 @@
 //! Быстрое оффлайн-превью геометрии: cargo run --bin focus_preview
 //! Печатает габариты и контрольные точки Ford Focus II, пишет SVG-проекцию
 //! (вид сбоку) в focus_preview.svg, чтобы можно было проверить силуэт без окна.
-include!("libembed.rs");
+include!("../../tools/libembed.rs");
 
 fn main() {
     let specs = all_car_specs();

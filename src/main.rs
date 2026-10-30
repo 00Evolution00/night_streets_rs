@@ -10,6 +10,7 @@ macro_rules! rgb {
 
 mod car;
 mod carmodels;
+mod focus_model;
 mod game;
 mod light;
 mod math;
