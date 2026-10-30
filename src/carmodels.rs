@@ -1221,9 +1221,6 @@ fn fm_smoothable(m: Mat) -> bool {
 fn fm_mat(m: crate::focus_model::FMat) -> Mat {
     use crate::focus_model::FMat as M;
     match m {
-        // Внутренний «кокон» (страховка от прозрачности) рисуем тёмным
-        // матовым пластиком, чтобы он не перетягивал на себя блики кузова.
-        M::Inner => Mat::Plastic,
         M::Body => Mat::Paint,
         M::Glass => Mat::Glass,
         M::Trim => Mat::Plastic,
