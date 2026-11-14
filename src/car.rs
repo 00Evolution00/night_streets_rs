@@ -405,7 +405,6 @@ impl Car {
 
         // поверхность: основная дорога или срезка
         let info = tr.surface(self.pos, self.idx, 40);
-        let on_main = info.surf == Surf::Main;
         let road = tr.road_of(info.surf);
         let mut lat_limit = road.half - 1.2;
         if let Surf::Short(si) = info.surf {
@@ -485,6 +484,7 @@ impl Car {
 /// Гражданская машина: едет по своей полосе с постоянной скоростью.
 pub struct Traffic {
     pub kind: usize,
+    #[allow(dead_code)]
     pub col: Rgb,
     pub length: f32,
     pub width: f32,

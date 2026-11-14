@@ -14,6 +14,7 @@ pub struct TrackSpec {
     pub shortcuts: usize,
     pub seed: u64,
     pub sky: [f32; 3],
+    #[allow(dead_code)]
     pub ground: [f32; 3],
     pub asphalt: [u8; 3],
     pub buildings: usize,
@@ -228,6 +229,7 @@ pub struct Shortcut {
 pub struct Track {
     pub road: Road,
     pub m: usize,
+    #[allow(dead_code)]
     pub length: f32,
     pub ds: f32,
     pub spec: TrackSpec,

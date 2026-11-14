@@ -201,8 +201,10 @@ pub struct CarSpec {
     pub name: &'static str,
     pub l: f32,
     pub w: f32,
+    #[allow(dead_code)]
     pub h: f32,
     pub wb: f32,
+    #[allow(dead_code)]
     pub track: f32,
     pub r: f32,
     /// станции кузова спереди назад: [z, y_низ, y_плечо, y_верх, полуширина_низ, полуширина_верх]
@@ -654,6 +656,7 @@ pub fn all_car_specs() -> Vec<CarSpec> {
 }
 
 /// Гражданский трафик: 0 седан, 1 хэтчбек, 2 фургон, 3 грузовик.
+#[allow(dead_code)]
 pub fn all_traffic_specs() -> Vec<CarSpec> {
     vec![
         spec(
@@ -1456,6 +1459,7 @@ pub fn fm_to_polys(
     polys
 }
 
+#[allow(dead_code)]
 fn t0_first(g: &[usize]) -> usize {
     g[0]
 }
@@ -1474,6 +1478,7 @@ fn fm_keyf(p: V3) -> K3 {
 /// разворачиваем обход. После этого все наружные грани гарантированно
 /// видны снаружи, а внутренние (изнанка панелей) корректно отбраковываются,
 /// и машина перестаёт быть «прозрачной».
+#[allow(dead_code)]
 pub fn orient_out(polys: &mut [Poly]) {
     if polys.is_empty() {
         return;
@@ -1848,6 +1853,7 @@ pub fn wheel_positions(s: &CarSpec) -> Vec<V3> {
     out
 }
 
+#[allow(dead_code)]
 fn simple_wheel(r: f32, sx: f32) -> Vec<Poly> {
     let n = 12usize;
     let hw = 0.115f32;
@@ -1884,6 +1890,7 @@ fn simple_wheel(r: f32, sx: f32) -> Vec<Poly> {
 
 /// Гражданская машина целиком (кузов + неподвижные колёса), без тюнинга.
 /// `kind`: 0 седан, 1 хэтчбек, 2 фургон, 3 грузовик.
+#[allow(dead_code)]
 pub fn build_traffic(s: &CarSpec, kind: usize, rgb: Rgb) -> Vec<Poly> {
     let mut polys: Vec<Poly>;
     if !s.body.is_empty() {
